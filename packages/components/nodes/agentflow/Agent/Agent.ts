@@ -28,7 +28,7 @@ import {
     replaceBase64ImagesWithFileReferences,
     updateFlowState
 } from '../utils'
-import { convertMultiOptionsToStringArray, getCredentialData, getCredentialParam } from '../../../src/utils'
+import { convertMultiOptionsToStringArray, getCredentialData, getCredentialParam, processTemplateVariables } from '../../../src/utils'
 import { addSingleFileToStorage } from '../../../src/storageUtils'
 import fetch from 'node-fetch'
 
@@ -797,7 +797,11 @@ class Agent_Agentflow implements INode {
                 const role = msg.role
                 const content = msg.content
                 if (role && content) {
-                    messages.push({ role, content })
+                    if (role === 'system') {
+                        messages.unshift({ role, content })
+                    } else {
+                        messages.push({ role, content })
+                    }
                 }
             }
 
@@ -974,11 +978,15 @@ class Agent_Agentflow implements INode {
                 }
             } else if (!humanInput && !isStreamable && isLastNode && sseStreamer) {
                 // Stream whole response back to UI if not streaming and no tool calls
-                let responseContent = JSON.stringify(response, null, 2)
-                if (typeof response.content === 'string') {
-                    responseContent = response.content
+                let finalResponse = ''
+                if (response.content && Array.isArray(response.content)) {
+                    finalResponse = response.content.map((item: any) => item.text).join('\n')
+                } else if (response.content && typeof response.content === 'string') {
+                    finalResponse = response.content
+                } else {
+                    finalResponse = JSON.stringify(response, null, 2)
                 }
-                sseStreamer.streamTokenEvent(chatId, responseContent)
+                sseStreamer.streamTokenEvent(chatId, finalResponse)
             }
 
             // Calculate execution time
@@ -1078,13 +1086,7 @@ class Agent_Agentflow implements INode {
             }
 
             // Process template variables in state
-            if (newState && Object.keys(newState).length > 0) {
-                for (const key in newState) {
-                    if (newState[key].toString().includes('{{ output }}')) {
-                        newState[key] = finalResponse
-                    }
-                }
-            }
+            newState = processTemplateVariables(newState, finalResponse)
 
             // Replace the actual messages array with one that includes the file references for images instead of base64 data
             const messagesWithFileReferences = replaceBase64ImagesWithFileReferences(
@@ -1715,9 +1717,20 @@ class Agent_Agentflow implements INode {
                     }
 
                     console.error('Error invoking tool:', e)
+                    const errMsg = getErrorMessage(e)
+                    let toolInput = toolCall.args
+                    if (typeof errMsg === 'string' && errMsg.includes(TOOL_ARGS_PREFIX)) {
+                        const [_, args] = errMsg.split(TOOL_ARGS_PREFIX)
+                        try {
+                            toolInput = JSON.parse(args)
+                        } catch (e) {
+                            console.error('Error parsing tool input from tool:', e)
+                        }
+                    }
+
                     usedTools.push({
                         tool: selectedTool.name,
-                        toolInput: toolCall.args,
+                        toolInput,
                         toolOutput: '',
                         error: getErrorMessage(e)
                     })
@@ -1987,9 +2000,20 @@ class Agent_Agentflow implements INode {
                         }
 
                         console.error('Error invoking tool:', e)
+                        const errMsg = getErrorMessage(e)
+                        let toolInput = toolCall.args
+                        if (typeof errMsg === 'string' && errMsg.includes(TOOL_ARGS_PREFIX)) {
+                            const [_, args] = errMsg.split(TOOL_ARGS_PREFIX)
+                            try {
+                                toolInput = JSON.parse(args)
+                            } catch (e) {
+                                console.error('Error parsing tool input from tool:', e)
+                            }
+                        }
+
                         usedTools.push({
                             tool: selectedTool.name,
-                            toolInput: toolCall.args,
+                            toolInput,
                             toolOutput: '',
                             error: getErrorMessage(e)
                         })
