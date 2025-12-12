@@ -8,8 +8,7 @@ import {
     IServerSideEventStreamer
 } from '../../../src/Interface'
 import axios, { AxiosRequestConfig } from 'axios'
-import { getCredentialData, getCredentialParam, processTemplateVariables } from '../../../src/utils'
-import JSON5 from 'json5'
+import { getCredentialData, getCredentialParam, processTemplateVariables, parseJsonBody } from '../../../src/utils'
 import { DataSource } from 'typeorm'
 import { BaseMessageLike } from '@langchain/core/messages'
 import { updateFlowState } from '../utils'
@@ -31,7 +30,7 @@ class ExecuteFlow_Agentflow implements INode {
     constructor() {
         this.label = 'Execute Flow'
         this.name = 'executeFlowAgentflow'
-        this.version = 1.1
+        this.version = 1.2
         this.type = 'ExecuteFlow'
         this.category = 'Agent Flows'
         this.description = 'Execute another flow'
@@ -103,8 +102,7 @@ class ExecuteFlow_Agentflow implements INode {
                         label: 'Key',
                         name: 'key',
                         type: 'asyncOptions',
-                        loadMethod: 'listRuntimeStateKeys',
-                        freeSolo: true
+                        loadMethod: 'listRuntimeStateKeys'
                     },
                     {
                         label: 'Value',
@@ -168,7 +166,7 @@ class ExecuteFlow_Agentflow implements INode {
         let overrideConfig = nodeData.inputs?.executeFlowOverrideConfig
         if (typeof overrideConfig === 'string' && overrideConfig.startsWith('{') && overrideConfig.endsWith('}')) {
             try {
-                overrideConfig = JSON5.parse(overrideConfig)
+                overrideConfig = parseJsonBody(overrideConfig)
             } catch (parseError) {
                 throw new Error(`Invalid JSON in executeFlowOverrideConfig: ${parseError.message}`)
             }
